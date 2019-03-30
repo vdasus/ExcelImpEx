@@ -18,10 +18,7 @@ namespace ExcImp
                     {"TP valst. Nr", "Number"},
                     {"TP VIN kodas", "Vin"}
                 });
-                /*{ "Code", "įmonės kodas"},
-                { "Number", "TP valst. Nr"},
-                { "Vin", "TP VIN kodas"},*/
-
+                
                 var dtList = rez.Where(s => !string.IsNullOrWhiteSpace(s.Code)
                                             && !string.IsNullOrWhiteSpace(s.Number)
                                             && !string.IsNullOrWhiteSpace(s.Vin))
