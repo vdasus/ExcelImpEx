@@ -1,7 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
-using gMotoImpEx.Core.DomainServices;
+using OfficeOpenXml;
 
 namespace ExcImp
 {
@@ -11,25 +12,44 @@ namespace ExcImp
         {
             try
             {
-                var tmp = new ExcelDataSource();
-                var rez = tmp.GetData<DataItem>(@"D:\REPO\_Learn\ExcImp\InputData.xlsx", new Dictionary<string, string>()
+                var rez = GetNonEmptyDistinctData<DataItem>(@"D:\REPO\_Learn\ExcImp\InputData.xlsx", false, new Dictionary<string, string>()
                 {
                     {"įmonės kodas", "Code"},
                     {"TP valst. Nr", "Number"},
                     {"TP VIN kodas", "Vin"}
                 });
-                
-                var dtList = rez.Where(s => !string.IsNullOrWhiteSpace(s.Code)
-                                            && !string.IsNullOrWhiteSpace(s.Number)
-                                            && !string.IsNullOrWhiteSpace(s.Vin))
-                    .Distinct()
-                    .ToList();
-
             }
             catch (Exception ex)
             {
                 Console.WriteLine(ex);
             }
         }
+
+        public static IReadOnlyCollection<T> GetData<T>(string fileName, bool throwOnFirstError = false, Dictionary<string, string> map = null) where T : new()
+        {
+            FileInfo existingFile = new FileInfo(fileName);
+            using (ExcelPackage package = new ExcelPackage(existingFile))
+            {
+                ExcelWorksheet worksheet = package.Workbook.Worksheets[1];
+
+                return worksheet.ToList<T>(throwOnFirstError, map).AsReadOnly();
+            }
+        }
+
+        public static IReadOnlyCollection<T> GetNonEmptyDistinctData<T>(string fileName, bool throwOnFirstError = false, Dictionary<string, string> map = null) where T : new()
+        {
+            return GetData<T>(fileName, throwOnFirstError, map)
+                .Where(s => !Extentions.CheckIsObjectEmpty(s))
+                .Distinct()
+                .ToList();
+        }
+
+        public static IReadOnlyCollection<T> GetNonEmptyData<T>(string fileName, bool throwOnFirstError = false, Dictionary<string, string> map = null) where T : new()
+        {
+            return GetData<T>(fileName, throwOnFirstError, map)
+                .Where(s => !Extentions.CheckIsObjectEmpty(s))
+                .ToList();
+        }
+
     }
 }

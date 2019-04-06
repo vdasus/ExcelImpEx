@@ -1,53 +1,42 @@
-﻿using System.ComponentModel.DataAnnotations;
-using System;
-using OfficeOpenXml;
+﻿using System;
 using System.Collections.Generic;
-using System.IO;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
+using System.Reflection;
+using CSharpFunctionalExtensions;
+using OfficeOpenXml;
 
-namespace gMotoImpEx.Core.DomainServices
+namespace ExcImp
 {
-/*public class DataItem
-        {
-            public string Code { get; set; }
-            public string Number { get; set; }
-            public string Vin { get; set; }
-        }
-
-    var rez = tmp.GetData<DataItem>(@"D:\REPO\_Learn\ExcImp\InputData.xlsx", new Dictionary<string, string>()
+    public static class Extentions
     {
-    {"įmonės kodas", "Code"},
-    {"TP valst. Nr", "Number"},
-    {"TP VIN kodas", "Vin"}
-    });*/
-
-    public class ExcelDataSource
-    {
-        #region Implementation of IDataSource
-
-        public IReadOnlyCollection<T> GetData<T>(string fileName, Dictionary<string, string> map = null) where T : new()
+        /*public IReadOnlyCollection<T> GetData<T>(string fileName, bool throwOnFirstError = false, Dictionary<string, string> map = null) where T : new()
         {
             FileInfo existingFile = new FileInfo(fileName);
             using (ExcelPackage package = new ExcelPackage(existingFile))
             {
                 ExcelWorksheet worksheet = package.Workbook.Worksheets[1];
 
-                return worksheet.ToList<T>(map).AsReadOnly();
+                return worksheet.ToList<T>(throwOnFirstError, map).AsReadOnly();
             }
         }
-        #endregion
-    }
+         ...
+         var data = obj.GetData<SendRequestItemDto>(@"C:\REPO\GDB\Utils\gMotoImpEx\Data\InputData.xlsx"
+         , new Dictionary<string, string>()
+            {
+                {"Įmonės kodas", "CompanyCode"},
+                {"TP valst. Nr", "VehicleNumber"},
+                {"TP VIN kodas", "VehicleVin"}
+            });
 
-    public class ExcelMap
-    {
-        public string Name { get; set; }
-        public string MappedTo { get; set; }
-        public int Index { get; set; }
-    }
+         //When we need distinct and non empty
+         var sut = data.Where(s => !string.IsNullOrWhiteSpace(s.CompanyCode)
+                                   && !string.IsNullOrWhiteSpace(s.VehicleNumber)
+                                   && !string.IsNullOrWhiteSpace(s.VehicleVin))
+                       .Distinct()
+                       .ToList();*/
 
-    public static class Extentions
-    {
-        public static List<T> ToList<T>(this ExcelWorksheet worksheet, Dictionary<string, string> map = null) where T : new()
+        public static List<T> ToList<T>(this ExcelWorksheet worksheet, bool throwOnFirstError = false, Dictionary<string, string> map = null) where T : new()
         {
             //DateTime Conversion
             var convertDateTime = new Func<double, DateTime>(excelDate =>
@@ -78,8 +67,8 @@ namespace gMotoImpEx.Core.DomainServices
                         HasDisplayName = displayAttribute != null
                     };
                 })
-            .Where(prop => !string.IsNullOrWhiteSpace(prop.DisplayName))
-            .ToList();
+                .Where(prop => !string.IsNullOrWhiteSpace(prop.DisplayName))
+                .ToList();
 
             var retList = new List<T>();
             var columns = new List<ExcelMap>();
@@ -97,7 +86,7 @@ namespace gMotoImpEx.Core.DomainServices
                 var cellValue = (worksheet.Cells[startRow, col].Value ?? string.Empty).ToString().Trim();
                 if (!string.IsNullOrWhiteSpace(cellValue))
                 {
-                    columns.Add(new ExcelMap()
+                    columns.Add(new ExcelMap
                     {
                         Name = cellValue,
                         MappedTo = map == null || map.Count == 0 ?
@@ -196,7 +185,7 @@ namespace gMotoImpEx.Core.DomainServices
                     }
                     catch (Exception ex)
                     {
-                        // Indicate parsing error on row?
+                        if (throwOnFirstError) throw new ApplicationException(ex.Message);
                     }
                 });
 
@@ -204,6 +193,72 @@ namespace gMotoImpEx.Core.DomainServices
             }
 
             return retList;
+        }
+
+        public static bool CheckIsObjectEmpty(object instance)
+        {
+            if (ReferenceEquals(null, instance)) return true;
+
+            const BindingFlags BINDING = BindingFlags.Instance |
+                                         BindingFlags.Static |
+                                         BindingFlags.Public |
+                                         BindingFlags.NonPublic;
+
+            var fields = instance.GetType().GetFields(BINDING);
+
+            foreach (var field in fields)
+            {
+                if (field.FieldType.IsValueType) continue;
+
+                object value = field.GetValue(field.IsStatic ? null : instance);
+
+                switch (value)
+                {
+                    case null:
+                    case string str when !string.IsNullOrWhiteSpace(str):
+                        return false;
+                }
+
+                if (!field.FieldType.Name.StartsWith("WS_IN_", StringComparison.OrdinalIgnoreCase)) continue;
+                if (!CheckIsObjectEmpty(value)) return false;
+            }
+
+            var properties = instance.GetType().GetProperties(BINDING);
+
+            foreach (var prop in properties)
+            {
+                if (!prop.CanRead) continue;
+                if (prop.PropertyType.IsValueType) continue;
+
+                object value = prop.GetValue(prop.GetGetMethod().IsStatic ? null : instance);
+
+                switch (value)
+                {
+                    case null:
+                    case string str when !string.IsNullOrWhiteSpace(str):
+                        return false;
+                }
+            }
+
+            return true;
+        }
+
+        private class ExcelMap : ValueObject
+        {
+            public string Name { get; set; }
+            public string MappedTo { get; set; }
+            public int Index { get; set; }
+
+            #region Overrides of ValueObject
+
+            protected override IEnumerable<object> GetEqualityComponents()
+            {
+                yield return Name;
+                yield return MappedTo;
+                yield return Index;
+            }
+
+            #endregion
         }
     }
 }
